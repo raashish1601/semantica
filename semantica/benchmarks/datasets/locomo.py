@@ -3,8 +3,9 @@
 Licence: **CC BY-NC 4.0** — non-commercial. The harness only *reads* a copy the
 user obtained themselves and never redistributes it. Because the licence is
 restrictive, this loader is shipped as an adapter without any bundled data and
-is deliberately excluded from the default dataset set: pass ``--dataset locomo
---locomo-path ...`` explicitly if you have accepted the terms.
+is deliberately excluded from the default dataset set: pass
+``--dataset locomo --data locomo=/path/to/locomo10.json`` explicitly if you have
+accepted the terms.
 
 Source: https://github.com/snap-research/locomo (``data/locomo10.json``).
 
