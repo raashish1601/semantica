@@ -77,6 +77,7 @@ class Mem0Memory:
         self.user_id = user_id
         self.top_k = int(top_k)
         self._reader = reader
+        self.last_retrieved: List[str] = []
         if client is None:
             try:
                 from mem0 import Memory
@@ -89,6 +90,7 @@ class Mem0Memory:
         self._client = client
 
     def reset(self) -> None:
+        self.last_retrieved = []
         reset = getattr(self._client, "reset", None)
         if reset is None:
             raise SystemUnavailable("mem0 client exposes no reset(); cannot isolate runs")
@@ -103,6 +105,7 @@ class Mem0Memory:
     def answer(self, question: str, *, case_id: str = "") -> str:
         results = self._client.search(question, user_id=self.user_id, limit=self.top_k)
         passages = _texts_from(results, "memory", "text", "content")
+        self.last_retrieved = list(passages)
         if not passages:
             return ""
         if self._reader is not None:
@@ -133,6 +136,7 @@ class GraphitiMemory:
     ):
         self.top_k = int(top_k)
         self._reader = reader
+        self.last_retrieved: List[str] = []
         self.group_id = group_id or "semantica-bench"
         if client is None:
             if not client_options:
@@ -153,6 +157,7 @@ class GraphitiMemory:
     def reset(self) -> None:
         # Rotating the group id is the only isolation Graphiti can offer cheaply;
         # it is also the safest, since it never deletes a user's real graph.
+        self.last_retrieved = []
         self.group_id = f"semantica-bench-{uuid4().hex[:8]}"
 
     def _episode_type(self):
@@ -184,6 +189,7 @@ class GraphitiMemory:
             self._client.search(query=question, group_ids=[self.group_id])
         )
         passages = _texts_from(results, "fact", "content", "name")
+        self.last_retrieved = list(passages)
         if not passages:
             return ""
         if self._reader is not None:
@@ -207,6 +213,7 @@ class CogneeMemory:
     ):
         self.top_k = int(top_k)
         self._reader = reader
+        self.last_retrieved: List[str] = []
         if client is None:
             try:
                 import cognee
@@ -224,6 +231,7 @@ class CogneeMemory:
         and quietly corrupt every number in the run, so an unrecognised prune
         surface is an error rather than a warning.
         """
+        self.last_retrieved = []
         prune = getattr(self._client, "prune", None)
         for name in ("prune_all", "prune_data"):
             fn = getattr(prune, name, None)
@@ -245,6 +253,7 @@ class CogneeMemory:
     def answer(self, question: str, *, case_id: str = "") -> str:
         results = _run(self._client.search(question))
         passages = _texts_from(results, "text", "content", "answer")
+        self.last_retrieved = list(passages)
         if not passages:
             return ""
         if self._reader is not None:

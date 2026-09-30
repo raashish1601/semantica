@@ -45,12 +45,14 @@ class SemanticaMemory:
                 raise SystemUnavailable(f"semantica memory layer unavailable: {exc}") from exc
             memory = AgentMemory(**memory_options) if memory_options else AgentMemory()
         self._memory = memory
+        self.last_retrieved: List[str] = []
 
     def reset(self) -> None:
         clear = getattr(self._memory, "clear", None)
         if clear is None:
             raise SystemUnavailable("AgentMemory has no clear(); cannot reset")
         clear()
+        self.last_retrieved = []
 
     def ingest(self, passages: Sequence[str], *, case_id: str = "") -> None:
         metadata: Optional[Dict[str, Any]] = {"case_id": case_id} if case_id else None
@@ -64,6 +66,7 @@ class SemanticaMemory:
             question, max_results=self.top_k
         )
         passages = [str(hit.get("content", "")) for hit in hits if hit.get("content")]
+        self.last_retrieved = list(passages)
         if not passages:
             return ""
         if self._reader is not None:

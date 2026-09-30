@@ -79,6 +79,7 @@ def run_system(
             Prediction(
                 case_id=case.case_id,
                 answer=answer if error is None else "",
+                retrieved=list(getattr(system, "last_retrieved", None) or []),
                 latency_s=time.perf_counter() - case_started,
                 error=error,
             )

@@ -267,6 +267,20 @@ class TestLexicalSystem:
         system.reset()
         assert system.answer("only passage?", case_id="c1") == ""
 
+    def test_answer_records_retrieved_passages(self):
+        system = get_system("lexical")
+        system.reset()
+        system.ingest(["alpha bravo", "charlie delta"], case_id="c1")
+        system.answer("alpha bravo?", case_id="c1")
+        assert system.last_retrieved == ["alpha bravo"]
+
+    def test_reset_clears_retrieved_passages(self):
+        system = get_system("lexical")
+        system.ingest(["alpha"], case_id="c1")
+        system.answer("alpha", case_id="c1")
+        system.reset()
+        assert system.last_retrieved == []
+
 
 # --------------------------------------------------------------------------- #
 # end-to-end (offline)
@@ -317,6 +331,19 @@ class TestRunBenchmark:
         report = run_benchmark([dataset], ["lexical"])
         assert report.results[0].n == 2
         assert report.results[0].errors == 0
+
+    def test_predictions_carry_retrieved_passages(self):
+        report = run_benchmark([load_dataset("sample")], ["lexical"])
+        predictions = report.results[0].predictions
+        assert predictions
+        # Every sample question shares content words with its evidence, so the
+        # lexical floor always retrieves something; the report must show it,
+        # otherwise per-case retrieval (the main debugging surface) is invisible.
+        assert all(prediction.retrieved for prediction in predictions)
+        by_id = {prediction.case_id: prediction for prediction in predictions}
+        assert by_id["sample-000"].retrieved[0] == (
+            "The novel Neuromancer was written by William Gibson and published in 1984."
+        )
 
 
 # --------------------------------------------------------------------------- #

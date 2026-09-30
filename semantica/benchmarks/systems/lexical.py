@@ -10,7 +10,7 @@ BM25-over-the-same-passages on HotPotQA/MuSiQue, that is worth knowing.
 corpus datasets hand it the whole conversation at once.
 """
 
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 from ..text import BM25, best_sentence
 from .base import register_system
@@ -25,9 +25,11 @@ class LexicalMemory:
         self.top_k = int(top_k)
         self._reader = reader
         self._index = BM25()
+        self.last_retrieved: List[str] = []
 
     def reset(self) -> None:
         self._index.clear()
+        self.last_retrieved = []
 
     def ingest(self, passages: Sequence[str], *, case_id: str = "") -> None:
         texts = [str(p) for p in passages if str(p).strip()]
@@ -36,6 +38,7 @@ class LexicalMemory:
 
     def answer(self, question: str, *, case_id: str = "") -> str:
         retrieved = self._index.search(question, top_k=self.top_k)
+        self.last_retrieved = list(retrieved)
         if not retrieved:
             return ""
         if self._reader is not None:
