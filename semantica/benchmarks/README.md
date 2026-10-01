@@ -31,12 +31,17 @@ expects the file's usual upstream format.
 
 ## Datasets
 
-| name | shape | scope | licence | note |
-| --- | --- | --- | --- | --- |
-| `sample` | 6 questions | per case | CC0-1.0 | hand-written, bundled, for smoke tests |
-| `hotpotqa` | official JSON or HF export | per case | CC BY-SA 4.0 | distractor setting |
-| `musique` | JSONL | per case | CC BY 4.0 | answerable split |
-| `locomo` | `locomo10.json` | corpus | CC BY-NC 4.0 | **non-commercial**, adapter only |
+| name | shape | scope | licence | upstream | note |
+| --- | --- | --- | --- | --- | --- |
+| `sample` | 6 questions | per case | CC0-1.0 | bundled, `datasets/sample.py` | hand-written, for smoke tests |
+| `hotpotqa` | official JSON or HF export | per case | CC BY-SA 4.0 | https://hotpotqa.github.io/ | distractor setting |
+| `musique` | JSONL | per case | CC BY 4.0 | https://github.com/StonyBrookNLP/musique | answerable split |
+| `locomo` | `locomo10.json` | corpus | CC BY-NC 4.0 | https://github.com/snap-research/locomo/blob/main/LICENSE.txt | **non-commercial**, adapter only |
+
+Each licence was checked against its upstream on 2026-10-01. One thing worth
+knowing: the `hotpotqa/hotpot` code repository is Apache-2.0, but the dataset
+itself is CC BY-SA 4.0. This harness reads only the data file, so the dataset
+terms are the ones that apply here.
 
 `locomo` is deliberately excluded from defaults. Its licence is non-commercial,
 so shipping its data inside this repo would pass that restriction on to everyone
