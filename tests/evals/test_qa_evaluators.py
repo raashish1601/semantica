@@ -9,6 +9,12 @@ class TestNormalizeAnswer:
     def test_lowercases_and_strips_punctuation(self):
         assert normalize_answer("The Eiffel Tower!") == "eiffel tower"
 
+    def test_deletes_punctuation_instead_of_spacing_it(self):
+        # The official SQuAD recipe removes punctuation rather than replacing it
+        # with a space, so an abbreviation collapses to a single token.
+        assert normalize_answer("U.S.") == "us"
+        assert normalize_answer("U.S.") == normalize_answer("US")
+
     def test_drops_articles(self):
         assert normalize_answer("a cat and an owl") == "cat and owl"
 
@@ -61,7 +67,8 @@ class TestTokenF1:
 
 class TestNormalizedExactMatch:
     def _em(self, actual, expected, config=None):
-        return reg.get_evaluator("normalized_exact_match")(actual, expected, config=config)
+        evaluator = reg.get_evaluator("normalized_exact_match")
+        return evaluator(actual, expected, config=config)
 
     def test_match_after_normalization(self):
         r = self._em("The University of Oxford.", "university of oxford")

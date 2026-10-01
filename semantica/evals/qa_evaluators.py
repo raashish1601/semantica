@@ -27,12 +27,14 @@ _PUNCT_RE = re.compile(r"[^\w\s]")
 def normalize_answer(text: Any) -> str:
     """Apply the SQuAD answer normalization to ``text``.
 
-    Lowercases, replaces punctuation with spaces, removes articles (a/an/the)
-    and collapses runs of whitespace. Kept as a public helper so callers can
-    reuse the exact normalization the evaluators apply.
+    Lowercases, **deletes** punctuation (the official SQuAD recipe removes it
+    rather than replacing it with a space, so ``"U.S."`` and ``"US"`` become the
+    same token), removes articles (a/an/the) and collapses runs of whitespace.
+    Kept as a public helper so callers can reuse the exact normalization the
+    evaluators apply.
     """
     text = str(text).lower()
-    text = _PUNCT_RE.sub(" ", text)
+    text = _PUNCT_RE.sub("", text)
     text = _ARTICLE_RE.sub(" ", text)
     return " ".join(text.split())
 
@@ -48,7 +50,9 @@ def _as_golds(expected: Any) -> Tuple[List[str], str]:
         if not golds:
             return [], "expected list contains no string answers"
         return golds, ""
-    return [], f"expected must be a string or list of strings, got {type(expected).__name__}"
+    return [], (
+        f"expected must be a string or list of strings, got {type(expected).__name__}"
+    )
 
 
 def _pair_overlap(gold: str, pred: str) -> Tuple[int, int, int]:
