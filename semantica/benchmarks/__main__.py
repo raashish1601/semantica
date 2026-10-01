@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+from ..evals import list_evaluators
 from .datasets import list_datasets, load_dataset
 from .runner import run_benchmark
 from .systems import list_systems
@@ -65,6 +66,12 @@ def _load(specs: List[str], data: Dict[str, str], limit):
 
 
 def _cmd_run(args) -> int:
+    if args.metric not in list_evaluators():
+        # A typo'd --metric used to average silently to 0.0; surface it instead.
+        raise SystemExit(
+            f"unknown --metric {args.metric!r}; registered evaluators: "
+            f"{', '.join(list_evaluators())}"
+        )
     if args.system in (["all"],):
         systems = list_systems()
     else:
@@ -74,7 +81,10 @@ def _cmd_run(args) -> int:
     for dataset in datasets:
         scope = dataset.scope
         licence = dataset.license
-        print(f"# {dataset.name}: {len(dataset)} cases, scope={scope}, licence={licence}")
+        print(
+            f"# {dataset.name}: {len(dataset)} cases, "
+            f"scope={scope}, licence={licence}"
+        )
 
     def progress(system, dataset, done, total):
         if args.quiet:
@@ -150,7 +160,10 @@ def _markdown(report: BenchmarkReport) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m semantica.benchmarks",
-        description="Run memory systems over QA benchmarks and score them with semantica.evals.",
+        description=(
+            "Run memory systems over QA benchmarks and score them with "
+            "semantica.evals."
+        ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -161,7 +174,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--dataset",
         action="append",
         required=True,
-        help="dataset name; repeat for several (e.g. --dataset sample --dataset musique)",
+        help=(
+            "dataset name; repeat for several "
+            "(e.g. --dataset sample --dataset musique)"
+        ),
     )
     run.add_argument(
         "--system",

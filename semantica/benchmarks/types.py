@@ -42,7 +42,15 @@ class BenchmarkCase:
 
 @dataclass(frozen=True)
 class Dataset:
-    """A named, licensed collection of cases at a fixed scope."""
+    """A named, licensed collection of cases at a fixed scope.
+
+    ``group_by`` names an optional :attr:`BenchmarkCase.metadata` key that splits
+    a ``corpus`` dataset into **independent** memories. LoCoMo sets it to
+    ``"sample_id"`` because each sample is a separate conversation: without it the
+    runner would merge every conversation into one blob and let one sample's
+    evidence leak into another's answers. Left empty, a corpus dataset is a single
+    shared memory (the whole thing is ingested once).
+    """
 
     name: str
     license: str
@@ -51,6 +59,7 @@ class Dataset:
     version: str = ""
     source: str = ""
     notes: str = ""
+    group_by: str = ""
 
     def __post_init__(self):
         if self.scope not in SCOPES:
@@ -71,6 +80,7 @@ class Dataset:
             version=self.version,
             source=self.source,
             notes=self.notes,
+            group_by=self.group_by,
         )
 
 

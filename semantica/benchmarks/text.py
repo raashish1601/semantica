@@ -103,6 +103,7 @@ class BM25:
                 if not tf:
                     continue
                 norm = self.k1 * (1 - self.b + self.b * len(doc) / (self._avgdl or 1))
-                scores[index] = scores.get(index, 0.0) + idf * tf * (self.k1 + 1) / (tf + norm)
+                numerator = idf * tf * (self.k1 + 1)
+                scores[index] = scores.get(index, 0.0) + numerator / (tf + norm)
         ranked = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
         return [self._texts[i] for i, _ in ranked[:top_k]]

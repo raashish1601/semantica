@@ -21,7 +21,7 @@ Both collapse to the same ``context`` list of ``"Title: sent. sent."``
 passages, so downstream systems see one format.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from ..types import PER_CASE, BenchmarkCase, Dataset
 from . import register_dataset

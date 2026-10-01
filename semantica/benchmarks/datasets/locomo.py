@@ -47,6 +47,10 @@ def _sessions(conversation: dict) -> List[str]:
     if not isinstance(conversation, dict):
         return []
 
+    def session_number(key: str) -> int:
+        suffix = key.rsplit("_", 1)[-1]
+        return int(suffix) if suffix.isdigit() else 0
+
     # Session keys look like "session_1"; "session_1_date_time" holds the date.
     session_ids = sorted(
         (
@@ -54,7 +58,7 @@ def _sessions(conversation: dict) -> List[str]:
             for key in conversation
             if key.startswith("session_") and not key.endswith("_date_time")
         ),
-        key=lambda k: int(k.rsplit("_", 1)[-1]) if k.rsplit("_", 1)[-1].isdigit() else 0,
+        key=session_number,
     )
 
     lines: List[str] = []
@@ -97,12 +101,13 @@ def load_locomo(
             if categories is not None and category not in categories:
                 continue
 
-            # Adversarial questions have a deliberately unanswerable premise;
-            # their "answer" is the correct rejection, and the gold answer list
-            # also carries the tempting-but-wrong one so it is not credited.
+            # Category 5 questions are adversarial: they carry a
+            # tempting-but-wrong ``adversarial_answer`` alongside the real gold
+            # ``answer``. The distractor is kept in metadata only — it must never
+            # enter the gold list, or the harness would credit a system for
+            # falling for the trap. Questions with no real ``answer`` are
+            # skipped rather than scored against the distractor.
             answers = as_answers(qa.get("answer"))
-            if not answers and category == 5 and qa.get("adversarial_answer"):
-                answers = as_answers(qa["adversarial_answer"])
             if not answers:
                 continue
 
@@ -120,6 +125,7 @@ def load_locomo(
                         "category": category,
                         "category_name": CATEGORY_NAMES.get(category, "unknown"),
                         "evidence": qa.get("evidence"),
+                        "adversarial_answer": qa.get("adversarial_answer"),
                     },
                 )
             )
@@ -131,6 +137,10 @@ def load_locomo(
         cases=cases,
         version="locomo10",
         source=_CITATION,
+        # Each sample is a *separate* long conversation with its own questions;
+        # the runner must give every conversation its own memory instead of
+        # merging all ten into one blob.
+        group_by="sample_id",
         notes=(
             "Non-commercial licence: results from this dataset must not be "
             "used commercially. Adapter only; no data is bundled."

@@ -19,8 +19,56 @@ from semantica.benchmarks import (
 )
 from semantica.benchmarks import text as bt
 from semantica.benchmarks.datasets import get_loader
-from semantica.benchmarks.systems import SystemUnavailable
+from semantica.benchmarks.systems import SystemUnavailable, register_system
 from semantica.benchmarks.types import BenchmarkCase, BenchmarkReport, Dataset
+
+
+class _RecordingMemory:
+    """A memory system that records what each group wrote and read.
+
+    Used to prove the runner keeps separate memories apart: ``reset`` drops the
+    current memory, ``ingest`` replaces it, and every answer snapshots it.
+    """
+
+    def __init__(self):
+        self.memory = []
+        self.ingest_log = []
+        self.answers = []
+        self.last_retrieved = []
+
+    def reset(self):
+        self.memory = []
+        self.last_retrieved = []
+
+    def ingest(self, passages, *, case_id=""):
+        self.memory = [str(p) for p in passages]
+        self.ingest_log.append((case_id, list(self.memory)))
+
+    def answer(self, question, *, case_id=""):
+        self.last_retrieved = list(self.memory)
+        self.answers.append((question, list(self.memory)))
+        return " ".join(self.memory)
+
+
+class _FailingMemory:
+    """A memory system whose ``reset`` or ``ingest`` blows up on demand."""
+
+    def __init__(self, fail):
+        self._fail = fail
+        self.last_retrieved = []
+        self.answered = False
+
+    def reset(self):
+        if self._fail == "reset":
+            raise RuntimeError("backing store offline")
+
+    def ingest(self, passages, *, case_id=""):
+        if self._fail == "ingest":
+            raise RuntimeError("write rejected")
+
+    def answer(self, question, *, case_id=""):
+        self.answered = True
+        return "unreachable"
 
 
 # --------------------------------------------------------------------------- #
@@ -73,7 +121,9 @@ class TestHotPotQALoader:
                 "_id": "q1",
                 "question": "Which city?",
                 "answer": "Paris",
-                "context": [["France", ["Paris is the capital.", "It is on the Seine."]]],
+                "context": [
+                    ["France", ["Paris is the capital.", "It is on the Seine."]]
+                ],
             }
         ]
         dataset = load_dataset("hotpotqa", path=self._write(tmp_path, payload))
@@ -89,7 +139,10 @@ class TestHotPotQALoader:
                 "id": "q2",
                 "question": "Which city?",
                 "answer": "Paris",
-                "context": {"title": ["France"], "sentences": [["Paris is the capital."]]},
+                "context": {
+                    "title": ["France"],
+                    "sentences": [["Paris is the capital."]],
+                },
             }
         ]
         dataset = load_dataset("hotpotqa", path=self._write(tmp_path, payload))
@@ -121,7 +174,9 @@ class TestMuSiQueLoader:
                 "question": "Who?",
                 "answer": "Bach",
                 "answer_aliases": ["Johann Sebastian Bach"],
-                "paragraphs": [{"title": "Composer", "paragraph_text": "Bach wrote it."}],
+                "paragraphs": [
+                    {"title": "Composer", "paragraph_text": "Bach wrote it."}
+                ],
             }
         ]
         dataset = load_dataset("musique", path=self._write(tmp_path, records))
@@ -160,7 +215,11 @@ class TestLoCoMoLoader:
                     "session_2": [{"speaker": "Alice", "text": "I went hiking again."}],
                 },
                 "qa": [
-                    {"question": "What does Alice love?", "answer": "hiking", "category": 4},
+                    {
+                        "question": "What does Alice love?",
+                        "answer": "hiking",
+                        "category": 4,
+                    },
                     {"question": "Who likes chess?", "answer": "Bob", "category": 2},
                 ],
             }
@@ -186,6 +245,53 @@ class TestLoCoMoLoader:
     def test_license_surfaced_as_non_commercial(self, tmp_path):
         dataset = load_dataset("locomo", path=self._write(tmp_path, self._payload()))
         assert "NON-COMMERCIAL" in dataset.license
+
+    def test_group_by_is_sample_id(self, tmp_path):
+        dataset = load_dataset("locomo", path=self._write(tmp_path, self._payload()))
+        assert dataset.group_by == "sample_id"
+
+    def test_adversarial_answer_is_metadata_only(self, tmp_path):
+        # Category 5 ships a tempting wrong answer next to the real one; it must
+        # never reach the gold list, or a system would be credited for the trap.
+        payload = [
+            {
+                "sample_id": "conv-9",
+                "conversation": {"session_1": [{"speaker": "A", "text": "hi"}]},
+                "qa": [
+                    {
+                        "question": "Where does Alice live?",
+                        "answer": "Paris",
+                        "category": 5,
+                        "adversarial_answer": "London",
+                    }
+                ],
+            }
+        ]
+        dataset = load_dataset("locomo", path=self._write(tmp_path, payload))
+        case = dataset.cases[0]
+        assert case.answers == ["Paris"]
+        assert "London" not in case.answers
+        assert case.metadata["adversarial_answer"] == "London"
+
+    def test_question_without_real_answer_is_skipped(self, tmp_path):
+        # An adversarial question with no real gold answer must be dropped, not
+        # scored against its distractor.
+        payload = [
+            {
+                "sample_id": "conv-9",
+                "conversation": {"session_1": [{"speaker": "A", "text": "hi"}]},
+                "qa": [
+                    {
+                        "question": "Trap?",
+                        "category": 5,
+                        "adversarial_answer": "London",
+                    },
+                    {"question": "Real?", "answer": "Paris", "category": 5},
+                ],
+            }
+        ]
+        dataset = load_dataset("locomo", path=self._write(tmp_path, payload))
+        assert [case.question for case in dataset.cases] == ["Real?"]
 
 
 # --------------------------------------------------------------------------- #
@@ -258,8 +364,12 @@ class TestLexicalSystem:
             ],
             case_id="c1",
         )
-        answer = system.answer("Which country was the telephone inventor born in?", case_id="c1")
-        assert answer == "The telephone inventor Alexander Graham Bell was born in Scotland."
+        answer = system.answer(
+            "Which country was the telephone inventor born in?", case_id="c1"
+        )
+        assert answer == (
+            "The telephone inventor Alexander Graham Bell was born in Scotland."
+        )
 
     def test_reset_clears_memory(self):
         system = get_system("lexical")
@@ -301,7 +411,9 @@ class TestRunBenchmark:
 
     def test_strict_mode_raises_on_unavailable_system(self):
         with pytest.raises(SystemUnavailable):
-            run_benchmark([load_dataset("sample")], ["no-such-system"], on_error="raise")
+            run_benchmark(
+                [load_dataset("sample")], ["no-such-system"], on_error="raise"
+            )
 
     def test_markdown_table_mentions_system_and_dataset(self):
         report = run_benchmark([load_dataset("sample")], ["lexical"])
@@ -345,6 +457,114 @@ class TestRunBenchmark:
             "The novel Neuromancer was written by William Gibson and published in 1984."
         )
 
+    def _two_conversations(self):
+        return Dataset(
+            name="two-conversations",
+            license="test",
+            scope=CORPUS,
+            group_by="sample_id",
+            cases=[
+                BenchmarkCase(
+                    case_id="a1",
+                    question="qa",
+                    answers=["alpha"],
+                    context=["alpha evidence"],
+                    metadata={"sample_id": "conv-a"},
+                ),
+                BenchmarkCase(
+                    case_id="b1",
+                    question="qb",
+                    answers=["bravo"],
+                    context=["bravo evidence"],
+                    metadata={"sample_id": "conv-b"},
+                ),
+            ],
+        )
+
+    def test_group_by_gives_each_conversation_its_own_memory(self):
+        probe = _RecordingMemory()
+        register_system("probe-grouped-memory", lambda **options: probe)
+
+        report = run_benchmark([self._two_conversations()], ["probe-grouped-memory"])
+
+        assert report.results[0].errors == 0
+        # One memory per conversation, each holding only its own evidence.
+        assert probe.ingest_log == [
+            ("conv-a", ["alpha evidence"]),
+            ("conv-b", ["bravo evidence"]),
+        ]
+        # ...and no answer could see the other conversation's evidence.
+        assert probe.answers == [
+            ("qa", ["alpha evidence"]),
+            ("qb", ["bravo evidence"]),
+        ]
+
+    def test_corpus_without_group_by_uses_one_shared_memory(self):
+        probe = _RecordingMemory()
+        register_system("probe-shared-memory", lambda **options: probe)
+        dataset = self._two_conversations()
+        dataset = Dataset(
+            name=dataset.name,
+            license=dataset.license,
+            scope=CORPUS,
+            cases=dataset.cases,
+        )
+
+        run_benchmark([dataset], ["probe-shared-memory"])
+
+        # Without group_by the whole corpus is a single memory, ingested once.
+        assert len(probe.ingest_log) == 1
+        assert probe.ingest_log[0][1] == ["alpha evidence", "bravo evidence"]
+
+    def test_reset_failure_is_recorded_not_fatal(self):
+        probe = _FailingMemory("reset")
+        register_system("probe-failing-reset", lambda **options: probe)
+        dataset = Dataset(
+            name="mini",
+            license="test",
+            scope=PER_CASE,
+            cases=[
+                BenchmarkCase(case_id="c1", question="q", answers=["a"], context=["x"]),
+                BenchmarkCase(case_id="c2", question="q", answers=["a"], context=["x"]),
+            ],
+        )
+
+        result = run_benchmark([dataset], ["probe-failing-reset"]).results[0]
+
+        assert result.n == 2
+        assert result.errors == 2
+        assert all(
+            "RuntimeError" in prediction.error for prediction in result.predictions
+        )
+        # A failed set-up must short-circuit the question, not answer on stale state.
+        assert probe.answered is False
+
+    def test_corpus_prep_failure_marks_every_case_in_the_group(self):
+        probe = _FailingMemory("ingest")
+        register_system("probe-failing-ingest", lambda **options: probe)
+        dataset = Dataset(
+            name="mini-corpus",
+            license="test",
+            scope=CORPUS,
+            cases=[
+                BenchmarkCase(case_id="c1", question="q", answers=["a"], context=["x"]),
+                BenchmarkCase(case_id="c2", question="q", answers=["a"], context=["x"]),
+            ],
+        )
+
+        result = run_benchmark([dataset], ["probe-failing-ingest"]).results[0]
+
+        assert result.errors == 2
+        assert all(
+            "RuntimeError" in prediction.error for prediction in result.predictions
+        )
+
+    def test_unknown_primary_metric_raises_instead_of_scoring_zero(self):
+        with pytest.raises(ValueError):
+            run_benchmark(
+                [load_dataset("sample")], ["lexical"], primary_metric="tokn_f1"
+            )
+
 
 # --------------------------------------------------------------------------- #
 # CLI
@@ -363,3 +583,18 @@ class TestCli:
         code = main(["run", "--dataset", "sample", "--system", "lexical", "--quiet"])
         assert code == 0
         assert "lexical" in capsys.readouterr().out
+
+    def test_unknown_metric_exits_with_error(self):
+        from semantica.benchmarks.__main__ import main
+
+        argv = [
+            "run",
+            "--dataset",
+            "sample",
+            "--system",
+            "lexical",
+            "--metric",
+            "tpyo",
+        ]
+        with pytest.raises(SystemExit):
+            main(argv)

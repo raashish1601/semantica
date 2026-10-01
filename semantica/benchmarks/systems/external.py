@@ -49,7 +49,10 @@ def _texts_from(results: Any, *keys: str) -> List[str]:
             texts.append(item)
             continue
         for key in keys:
-            value = item.get(key) if isinstance(item, dict) else getattr(item, key, None)
+            if isinstance(item, dict):
+                value = item.get(key)
+            else:
+                value = getattr(item, key, None)
             if value:
                 texts.append(str(value))
                 break
@@ -93,7 +96,9 @@ class Mem0Memory:
         self.last_retrieved = []
         reset = getattr(self._client, "reset", None)
         if reset is None:
-            raise SystemUnavailable("mem0 client exposes no reset(); cannot isolate runs")
+            raise SystemUnavailable(
+                "mem0 client exposes no reset(); cannot isolate runs"
+            )
         reset()
 
     def ingest(self, passages: Sequence[str], *, case_id: str = "") -> None:

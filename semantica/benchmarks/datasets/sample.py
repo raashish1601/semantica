@@ -29,7 +29,8 @@ _CASES = [
         "William Gibson",
         ["Gibson", "William Ford Gibson"],
         [
-            "The novel Neuromancer was written by William Gibson and published in 1984.",
+            "The novel Neuromancer was written by William Gibson and published "
+            "in 1984.",
             "Neuromancer won the Nebula Award and helped define the cyberpunk genre.",
             "William Gibson was born in Conway, South Carolina in 1948.",
         ],
@@ -39,7 +40,8 @@ _CASES = [
         "Scotland",
         ["Scottish"],
         [
-            "The telephone inventor Alexander Graham Bell was born in Scotland in 1847.",
+            "The telephone inventor Alexander Graham Bell was born in Scotland "
+            "in 1847.",
             "The telephone was patented in the United States in 1876.",
             "Bell later emigrated to Canada and then to the United States.",
         ],
@@ -69,7 +71,8 @@ _CASES = [
         "Steve Jobs",
         ["Steven Jobs", "Jobs"],
         [
-            "The company that makes the iPhone, Apple, was founded by Steve Jobs in 1976.",
+            "The company that makes the iPhone, Apple, was founded by Steve "
+            "Jobs in 1976.",
             "The iPhone was released by Apple in 2007.",
             "Apple is headquartered in Cupertino, California.",
         ],
@@ -79,7 +82,8 @@ _CASES = [
         "Spain",
         ["Spanish"],
         [
-            "The painter of The Persistence of Memory, Salvador Dali, was born in Spain in 1904.",
+            "The painter of The Persistence of Memory, Salvador Dali, was born "
+            "in Spain in 1904.",
             "The Persistence of Memory is a 1931 painting by Salvador Dali.",
             "Dali later worked in Paris and in the United States.",
         ],

@@ -42,7 +42,9 @@ class SemanticaMemory:
             try:
                 from semantica.context.agent_memory import AgentMemory
             except ImportError as exc:  # pragma: no cover - env dependent
-                raise SystemUnavailable(f"semantica memory layer unavailable: {exc}") from exc
+                raise SystemUnavailable(
+                    f"semantica memory layer unavailable: {exc}"
+                ) from exc
             memory = AgentMemory(**memory_options) if memory_options else AgentMemory()
         self._memory = memory
         self.last_retrieved: List[str] = []

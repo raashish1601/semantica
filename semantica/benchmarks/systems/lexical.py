@@ -10,7 +10,7 @@ BM25-over-the-same-passages on HotPotQA/MuSiQue, that is worth knowing.
 corpus datasets hand it the whole conversation at once.
 """
 
-from typing import List, Optional, Sequence
+from typing import List, Sequence
 
 from ..text import BM25, best_sentence
 from .base import register_system
