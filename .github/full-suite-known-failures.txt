@@ -14,32 +14,39 @@
 # root, with the LLM API keys removed from the environment and the Hugging
 # Face cache forced offline:
 #
-#   pytest -q tests -m "not integration"
+#   pytest -q tests -m "not integration"        # -> the 49 further down
+#   pytest -q tests -m integration \            # -> the 7 integration entries
+#     --ignore tests/integrations/google_adk/ \
+#     --ignore tests/integrations/open_ontologies/
 #   # HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1, no OPENAI/ANTHROPIC/GEMINI key
 #
-# That run was Windows 11 / CPython 3.11; CI is ubuntu-latest / CPython 3.11.
-# So this list is an upper bound. The entries under "Windows-only" are expected
-# to pass on Linux and should be deleted from this file once a CI run confirms
-# it. The rest are expected to reproduce.
+# Both runs were Windows 11 / CPython 3.11; CI is ubuntu-latest / CPython 3.11.
+# So this list is an upper bound. The entries marked `# windows-only` are
+# expected to pass on Linux and are deselected on Windows only. The rest are
+# expected to reproduce.
 #
 # Format: one pytest node id per line. Blank lines and lines whose first
-# non-space character is `#` are ignored.
+# non-space character is `#` are ignored. A trailing `# windows-only` marker
+# means the step deselects that id when it runs on Windows, and runs it
+# everywhere else.
 #
 # Delete a line to re-enable a test. Fixing the defect behind it is what should
 # drive that, not convenience.
 
 # --- Windows-only: network pinned to a literal IP -----------------------------
 # These fail here with `[WinError 10049] 在其上下文中，该请求的地址无效`
-# when connecting to the pinned address of example.com. Windows-specific.
-tests/ingest/test_ingestors.py::TestFeedIngestor::test_ingest_feed
-tests/ingest/test_web_ingestor.py::test_ingest_url_happy
-tests/ingest/test_web_ingestor.py::test_sitemap_fallback_parsing
-tests/ingest/test_web_ingestor.py::test_sitemap_index_recursion
+# when connecting to the pinned address of example.com. Windows-specific, so
+# the step deselects them on Windows only — see `# windows-only` below.
+tests/ingest/test_ingestors.py::TestFeedIngestor::test_ingest_feed  # windows-only
+tests/ingest/test_web_ingestor.py::test_ingest_url_happy  # windows-only
+tests/ingest/test_web_ingestor.py::test_sitemap_fallback_parsing  # windows-only
+tests/ingest/test_web_ingestor.py::test_sitemap_index_recursion  # windows-only
 
 # --- Windows-only: symlink creation needs a privilege -------------------------
 # `OSError: [WinError 1314] 客户端没有所需的特权` — creating the symlink the
-# test needs requires Developer Mode or an elevated shell on Windows.
-tests/semantic_extract/test_cache_backends.py::test_sqlite_rejects_symlinked_db
+# test needs requires Developer Mode or an elevated shell on Windows. On Linux
+# it runs, which is where the rejection is actually covered.
+tests/semantic_extract/test_cache_backends.py::test_sqlite_rejects_symlinked_db  # windows-only
 
 # --- A MagicMock reaches code that compares or parses it ----------------------
 # `TypeError: '>' not supported between instances of 'MagicMock' and 'int'`, or
@@ -108,3 +115,20 @@ tests/semantic_extract/test_cache_backends.py::test_zero_ttl_expires_immediately
 tests/test_mcp_decisions_link.py::TestLinkDecisionsEndToEnd::test_duplicate_link_returns_false
 tests/vector_store/test_hybrid_similarity.py::TestHybridSimilarityCalculator::test_pearson_similarity_calculation
 tests/vector_store/test_vector_store.py::test_backend_mirroring_and_save
+
+# --- Integration tests outside the two dedicated integration directories ------
+# These carry the `integration` marker but live outside tests/integrations/
+# google_adk/ and tests/integrations/open_ontologies/, so the step runs them
+# with everything else. They need no service and no network: they already fail
+# on an unmodified tree for the same local reasons as the groups above — a
+# MagicMock double that no longer fits the production signature, an optional
+# `sqlalchemy` extra this job does not install, a fallback backend answering
+# because the real embedding model is offline, and two expectation drifts in
+# the deepdive suite.
+tests/ingest/test_notebook_02.py::TestNotebook02DataIngestion::test_03_web_ingestion
+tests/ingest/test_notebook_02.py::TestNotebook02DataIngestion::test_08_database_ingestion
+tests/test_all_features.py::TestSemanticaFeatures::test_03_model_switching
+tests/test_all_features.py::TestSemanticaFeatures::test_06_hybrid_search
+tests/test_semantic_extract_deepdive.py::TestSemanticExtractDeepDive::test_ner_extractor_pattern
+tests/test_semantic_extract_deepdive_part2.py::TestSemanticExtractDeepDivePart2::test_coreference_resolver_pronouns
+tests/test_semantic_extract_deepdive_part2.py::TestSemanticExtractDeepDivePart2::test_event_detector_basic

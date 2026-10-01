@@ -169,9 +169,25 @@ jobs:
           # A node id that no longer collects is a no-op for --deselect rather
           # than an error, so a stale line cannot break the job; it just stops
           # deselecting, and the test it named runs again.
+          #
+          # A line may carry a trailing `# windows-only` marker. Those ids fail
+          # only on Windows — a network pin to a literal address Windows
+          # refuses, and a symlink that needs a privilege — so they are
+          # deselected only on Windows. On Linux they run, which is the only
+          # place the symlink rejection in tests/semantic_extract/test_cache_backends.py
+          # gets exercised at all; deselecting it unconditionally would drop a
+          # security check on the platform where it works.
           deselect=()
-          while IFS= read -r node; do
-            case "$node" in ''|'#'*) continue ;; esac
+          while IFS= read -r line; do
+            case "$line" in
+              ''|'#'*) continue ;;
+              *windows-only*)
+                if [ "${RUNNER_OS:-}" != "Windows" ]; then continue; fi
+                ;;
+            esac
+            node="${line%%#*}"
+            node="${node#"${node%%[![:space:]]*}"}"
+            node="${node%"${node##*[![:space:]]}"}"
             deselect+=(--deselect "$node")
           done < .github/full-suite-known-failures.txt
           echo "deselecting known failures: ${#deselect[@]}"
@@ -180,7 +196,13 @@ jobs:
           # at the end of this job, each with its own dependency installation.
           # Skipping them here keeps those assumptions intact and avoids
           # running them twice.
-          pytest -q tests -m "not integration" \
+          #
+          # Everything else under tests/ runs here, integration marker or not:
+          # the integration tests outside those two directories need nothing
+          # beyond the pinned tree this step is measured against — they are
+          # offline and service-free — so leaving them unnamed would be the one
+          # slice that still had no gate.
+          pytest -q tests \
             --ignore tests/integrations/google_adk/ \
             --ignore tests/integrations/open_ontologies/ \
             "${deselect[@]}"
