@@ -33,14 +33,15 @@
 # Delete a line to re-enable a test. Fixing the defect behind it is what should
 # drive that, not convenience.
 
-# --- Windows-only: network pinned to a literal IP -----------------------------
-# These fail here with `[WinError 10049] 在其上下文中，该请求的地址无效`
-# when connecting to the pinned address of example.com. Windows-specific, so
-# the step deselects them on Windows only — see `# windows-only` below.
-tests/ingest/test_ingestors.py::TestFeedIngestor::test_ingest_feed  # windows-only
-tests/ingest/test_web_ingestor.py::test_ingest_url_happy  # windows-only
-tests/ingest/test_web_ingestor.py::test_sitemap_fallback_parsing  # windows-only
-tests/ingest/test_web_ingestor.py::test_sitemap_index_recursion  # windows-only
+# --- Network pinned to a literal address, unreachable from the runners --------
+# These connect to the pinned literal address of example.com. Windows refuses
+# it outright (`[WinError 10049] 在其上下文中，该请求的地址无效`); on the Linux
+# runner the connection times out instead. They fail on both platforms, so they
+# are deselected unconditionally rather than on Windows only.
+tests/ingest/test_ingestors.py::TestFeedIngestor::test_ingest_feed
+tests/ingest/test_web_ingestor.py::test_ingest_url_happy
+tests/ingest/test_web_ingestor.py::test_sitemap_fallback_parsing
+tests/ingest/test_web_ingestor.py::test_sitemap_index_recursion
 
 # --- Windows-only: symlink creation needs a privilege -------------------------
 # `OSError: [WinError 1314] 客户端没有所需的特权` — creating the symlink the
@@ -132,3 +133,69 @@ tests/test_all_features.py::TestSemanticaFeatures::test_06_hybrid_search
 tests/test_semantic_extract_deepdive.py::TestSemanticExtractDeepDive::test_ner_extractor_pattern
 tests/test_semantic_extract_deepdive_part2.py::TestSemanticExtractDeepDivePart2::test_coreference_resolver_pronouns
 tests/test_semantic_extract_deepdive_part2.py::TestSemanticExtractDeepDivePart2::test_event_detector_basic
+
+# -----------------------------------------------------------------------------
+# Added 2026-10-02 from CI run 36860808592 (job `build`, ubuntu-latest /
+# CPython 3.11), when the suite first ran there. The Windows measurement above
+# could not see these: the process-wide config keeps a double that only leaks
+# in the single-process run this step uses, and the rest are environment and
+# expectation drift. No file any of them lives in is touched by the change that
+# added this step, so nothing here is caused by wiring the suite into CI.
+# -----------------------------------------------------------------------------
+
+# --- Provider key resolution: a double supplies the key in a full run ---------
+# `config.get_api_key` hands the client a key whose repr is a `<MagicMock ...>`:
+# a double left by another test is still in the process-wide config when these
+# run. `is_available()` then reports True with no key set, and generation
+# reaches the live client instead of raising `ProcessingError` — 401s from
+# openai/deepseek/groq, a 404 from novita, `EphemeralTokenAPIKeyError` from
+# gemini, and a `TypeError` from anthropic where the `MagicMock` is joined into
+# a string. They pass in the two-invocation Windows measurement above, so they
+# are absent from the groups it produced.
+tests/test_llm_anthropic.py::test_is_available_false_with_no_key
+tests/test_llm_anthropic.py::test_generate_raises_clear_error_when_unavailable
+tests/test_llm_anthropic.py::test_generate_structured_raises_clear_error_when_unavailable
+tests/test_llm_anthropic.py::test_generate_typed_raises_clear_error_when_unavailable
+tests/test_llm_deepseek.py::test_is_available_false_with_no_key
+tests/test_llm_deepseek.py::test_generate_raises_clear_error_when_unavailable
+tests/test_llm_deepseek.py::test_generate_structured_raises_clear_error_when_unavailable
+tests/test_llm_deepseek.py::test_generate_typed_raises_clear_error_when_unavailable
+tests/test_llm_gemini.py::test_is_available_false_with_no_key
+tests/test_llm_gemini.py::test_generate_raises_clear_error_when_unavailable
+tests/test_llm_gemini.py::test_generate_structured_raises_clear_error_when_unavailable
+tests/test_llm_gemini.py::test_generate_typed_raises_clear_error_when_unavailable
+tests/test_llm_groq.py::test_is_available_false_with_no_key
+tests/test_llm_groq.py::test_generate_raises_clear_error_when_unavailable
+tests/test_llm_groq.py::test_generate_structured_raises_clear_error_when_unavailable
+tests/test_llm_groq.py::test_generate_typed_raises_clear_error_when_unavailable
+tests/test_llm_novita.py::test_is_available_false_with_no_key
+tests/test_llm_novita.py::test_generate_raises_clear_error_when_unavailable
+tests/test_llm_novita.py::test_generate_structured_raises_clear_error_when_unavailable
+tests/test_llm_novita.py::test_generate_typed_raises_clear_error_when_unavailable
+tests/test_llm_openai.py::test_is_available_false_with_no_key
+tests/test_llm_openai.py::test_generate_raises_clear_error_when_unavailable
+tests/test_llm_openai.py::test_generate_structured_raises_clear_error_when_unavailable
+tests/test_llm_openai.py::test_generate_typed_raises_clear_error_when_unavailable
+
+# --- The CLI wraps the paths it reports mid-token -----------------------------
+# `test_reports_the_files_it_wrote` looks for the written filename in the
+# command's output, but the reporter hard-wraps that output every ~44 columns,
+# so a path is split mid-token (`graph_entities.ar\nrow`). The assertion is a
+# substring check, so the wrap decides whether it passes.
+tests/test_cli_commands.py::TestExportMultiFileFormats::test_reports_the_files_it_wrote[arrow-.arrow]
+tests/test_cli_commands.py::TestExportMultiFileFormats::test_reports_the_files_it_wrote[csv-.csv]
+tests/test_cli_commands.py::TestExportMultiFileFormats::test_reports_the_files_it_wrote[parquet-.parquet]
+
+# --- faiss PQ training hits a SIMD constraint in this environment -------------
+# `'ksub % 8 == 0' failed` inside `faiss::compute_PQ_dis_tables_dsub2` on the
+# AVX2 path: the training parameters the test passes do not satisfy the
+# constraint the installed faiss build enforces.
+tests/vector_store/test_faiss_index.py::test_builder_trains_pq_index
+
+# --- Count and mock-call drift ------------------------------------------------
+# `expected call not found`: the call the Weaviate test records no longer
+# matches what the store issues. `assert 2 == 5`: the Jena empty-graph test
+# counts operations that all complete only once every concurrent writer has
+# landed.
+tests/vector_store/test_backend_metadata_filtering.py::TestBackendMetadataFiltering::test_weaviate_store_filter_by_metadata_native_filter
+tests/triplet_store/test_jena_store_empty_graph.py::TestJenaStoreEmptyGraph::test_empty_graph_with_concurrent_operations

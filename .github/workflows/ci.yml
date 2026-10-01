@@ -170,13 +170,13 @@ jobs:
           # than an error, so a stale line cannot break the job; it just stops
           # deselecting, and the test it named runs again.
           #
-          # A line may carry a trailing `# windows-only` marker. Those ids fail
-          # only on Windows — a network pin to a literal address Windows
-          # refuses, and a symlink that needs a privilege — so they are
-          # deselected only on Windows. On Linux they run, which is the only
-          # place the symlink rejection in tests/semantic_extract/test_cache_backends.py
-          # gets exercised at all; deselecting it unconditionally would drop a
-          # security check on the platform where it works.
+          # A line may carry a trailing `# windows-only` marker. That means the
+          # id fails only on Windows and is deselected there alone — a symlink
+          # that needs a privilege, for instance. On Linux it runs, which is the
+          # only place the symlink rejection in
+          # tests/semantic_extract/test_cache_backends.py gets exercised at all;
+          # deselecting it unconditionally would drop a security check on the
+          # platform where it works.
           deselect=()
           while IFS= read -r line; do
             case "$line" in
