@@ -21,26 +21,47 @@
 #   # HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1, no OPENAI/ANTHROPIC/GEMINI key
 #
 # Both runs were Windows 11 / CPython 3.11; CI is ubuntu-latest / CPython 3.11.
-# So this list is an upper bound. The entries marked `# windows-only` are
-# expected to pass on Linux and are deselected on Windows only. The rest are
-# expected to reproduce.
+# That measurement is not a superset of a Linux run: the entries appended below
+# from the suite's first Linux run are failures it could not see, so this list
+# is the union of the two runs rather than an upper bound from either. The
+# entries marked `# windows-only` are expected to pass on Linux and are
+# deselected on Windows only. The rest are expected to reproduce.
 #
-# Format: one pytest node id per line. Blank lines and lines whose first
-# non-space character is `#` are ignored. A trailing `# windows-only` marker
-# means the step deselects that id when it runs on Windows, and runs it
-# everywhere else.
+# Format: one pytest node id per line. The step ignores a line only when it is
+# empty or its first character is `#`, so keep comments flush left — an indented
+# comment would be read as a node id and deselected as the empty string. A
+# trailing `# windows-only` marker means the step deselects that id when it runs
+# on Windows, and runs it everywhere else.
 #
 # Delete a line to re-enable a test. Fixing the defect behind it is what should
 # drive that, not convenience.
 
-# --- Network pinned to a literal address, unreachable from the runners --------
-# These connect to the pinned literal address of example.com. Windows refuses
-# it outright (`[WinError 10049] 在其上下文中，该请求的地址无效`); on the Linux
-# runner the connection times out instead. They fail on both platforms, so they
-# are deselected unconditionally rather than on Windows only.
+# --- The test double patches a call the ingest path does not make -------------
+# Each of these stubs `requests` at a layer the ingestors do not use: they fetch
+# through `request_with_ssrf_guard()`, which issues `session.request(...)` —
+# neither `requests.get()` nor `Session.get()`. The stub therefore intercepts
+# nothing, the request is really sent, and the guard
+# pins the connection to the address it resolved. `tests/ingest/conftest.py`
+# installs an autouse fixture that stubs `ssrf.socket.getaddrinfo` to map *every*
+# hostname to the single literal 93.184.216.34, so all four calls aim at that
+# one address regardless of the URL the test passes. Windows refuses to connect
+# to it (`[WinError 10049] 在其上下文中，该请求的地址无效`); on the Linux runner
+# the connection times out instead. They fail on both platforms, so they are
+# deselected unconditionally rather than on Windows only.
+# What each one stubs, and why it misses:
+#   test_ingest_feed — `requests.get`; the feed fetch goes through
+#     `request_with_ssrf_guard()`, so the stub misses and GET /feed.xml is sent.
 tests/ingest/test_ingestors.py::TestFeedIngestor::test_ingest_feed
+#   test_ingest_url_happy — `requests.Session.get`; the page fetch calls
+#     `request_with_ssrf_guard(..., session=...)`, which uses `session.request`,
+#     so the stub misses and GET / is sent.
 tests/ingest/test_web_ingestor.py::test_ingest_url_happy
+#   test_sitemap_fallback_parsing — `requests.get`; `SitemapCrawler.parse_sitemap`
+#     goes through `request_with_ssrf_guard()`, so the stub misses and GET / is sent.
 tests/ingest/test_web_ingestor.py::test_sitemap_fallback_parsing
+#   test_sitemap_index_recursion — `requests.get`; `SitemapCrawler.crawl_sitemap_index`
+#     goes through `request_with_ssrf_guard()`, so the stub misses and GET /index.xml
+#     is sent.
 tests/ingest/test_web_ingestor.py::test_sitemap_index_recursion
 
 # --- Windows-only: symlink creation needs a privilege -------------------------
