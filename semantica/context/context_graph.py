@@ -3145,8 +3145,12 @@ class ContextGraph:
                 self.logger.warning(f"Audit trail callback failed for node {node.node_id}: {e}")
         return True
     
-    def _add_internal_edge(self, edge: ContextEdge) -> bool:
-        """Internal method to add an edge."""
+    def _add_internal_edge(self, edge: ContextEdge, unique_type: bool = False) -> bool:
+        """Internal method to add an edge.
+
+        With ``unique_type=True`` the edge is skipped when the source already has
+        an edge of the same type to the same target.
+        """
         if edge.source_id is None or edge.target_id is None:
             self.logger.warning("Skipping internal edge with invalid endpoints: %r", edge)
             return False
@@ -3154,6 +3158,11 @@ class ContextGraph:
             # Edge identity is content-derived, so an existing edge_id means this
             # exact edge is already stored; re-adding it is a no-op (issue #922).
             if edge.edge_id in self._edge_index:
+                return False
+            if unique_type and any(
+                e.target_id == edge.target_id and e.edge_type == edge.edge_type
+                for e in self._adjacency.get(edge.source_id, [])
+            ):
                 return False
 
             # Ensure nodes exist
@@ -3950,22 +3959,17 @@ class ContextGraph:
             weight=1.0,
             metadata={"recorded_at": datetime.utcnow().isoformat()},
         )
-        # Guard against semantic duplicates: two calls with the same
-        # (source, target, relationship_type) triple represent the same causal
-        # link regardless of when they are recorded.  The content-derived
-        # edge_id includes recorded_at, so _add_internal_edge cannot detect
-        # this.  The duplicate check and the insertion are held under the same
-        # lock acquisition so no concurrent call can slip through between them.
-        # self._lock is an RLock, so the nested acquisition inside
-        # _add_internal_edge by the same thread is safe.
-        with self._lock:
-            existing = self._adjacency.get(source_decision_id, [])
-            if any(
-                e.target_id == target_decision_id and e.edge_type == relationship_type
-                for e in existing
-            ):
-                return False
-            return self._add_internal_edge(edge)
+        # edge_id includes recorded_at, so the same causal link recorded twice
+        # gets a new id; compare (target, type) instead.
+        if not self._add_internal_edge(edge, unique_type=True):
+            self.logger.warning(
+                "Causal relationship %s -[%s]-> %s already exists; skipping",
+                source_decision_id,
+                relationship_type,
+                target_decision_id,
+            )
+            return False
+        return True
 
     def get_causal_chain(
         self,

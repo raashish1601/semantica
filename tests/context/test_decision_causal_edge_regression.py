@@ -596,3 +596,27 @@ def test_add_causal_relationship_returns_false_for_duplicate(monkeypatch):
     # Exactly one edge stored, not two.
     causal_edges = [e for e in graph.edges if e.source_id == src and e.target_id == tgt]
     assert len(causal_edges) == 1
+
+
+def test_add_causal_relationship_runs_callback_without_graph_lock():
+    """The audit callback must not run while the graph lock is held."""
+    import threading
+
+    graph, src, tgt = _two_decision_graph()
+    lock_free = []
+
+    def try_lock():
+        acquired = graph._lock.acquire(timeout=1)
+        if acquired:
+            graph._lock.release()
+        lock_free.append(acquired)
+
+    def callback(op, edge_id, payload):
+        # Another thread can only take the lock if this thread is not holding it.
+        t = threading.Thread(target=try_lock)
+        t.start()
+        t.join()
+
+    graph.mutation_callback = callback
+    assert graph.add_causal_relationship(src, tgt, "CAUSED") is True
+    assert lock_free == [True]
