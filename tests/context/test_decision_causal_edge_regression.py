@@ -571,8 +571,23 @@ def test_add_causal_relationship_non_decision_node_emits_warning(caplog):
     assert any(src in r.message for r in caplog.records)
 
 
-def test_add_causal_relationship_returns_false_for_duplicate():
+def test_add_causal_relationship_returns_false_for_duplicate(monkeypatch):
     """Duplicate insertion of the same causal edge must return False (issue #1653 Part 2)."""
+    import itertools
+    from datetime import datetime, timedelta
+
+    import semantica.context.context_graph as context_graph_module
+
+    # Give each call its own recorded_at, as happens whenever the two calls don't
+    # land in the same microsecond (#1873).
+    ticks = itertools.count()
+
+    class _Clock(datetime):
+        @classmethod
+        def utcnow(cls):
+            return datetime(2026, 1, 1) + timedelta(microseconds=next(ticks))
+
+    monkeypatch.setattr(context_graph_module, "datetime", _Clock)
     graph, src, tgt = _two_decision_graph()
     first = graph.add_causal_relationship(src, tgt, "CAUSED")
     second = graph.add_causal_relationship(src, tgt, "CAUSED")

@@ -3903,9 +3903,14 @@ class ContextGraph:
             relationship_type: Type of relationship (CAUSED, INFLUENCED, PRECEDENT_FOR)
 
         Returns:
-            True when the edge was added; False when it was skipped because a
-            decision ID is unknown or a node is not a decision (logged as a
-            warning so callers no longer mistake the skip for success).
+            True when a new causal edge was inserted.
+            False when the operation was skipped without inserting an edge:
+              - source or target decision ID is not present in the graph;
+              - source or target node exists but is not a decision node;
+              - an equivalent causal relationship (same source, target, and
+                normalized relationship type) already exists.
+            Skipped operations are logged at WARNING level. Invalid
+            relationship types raise ValueError instead of returning False.
         """
         # Normalize so callers may use either vocabulary's spelling
         # ("causes" from CausalChainAnalyzer, or "CAUSED" from this module's
@@ -3945,8 +3950,22 @@ class ContextGraph:
             weight=1.0,
             metadata={"recorded_at": datetime.utcnow().isoformat()},
         )
-        self._add_internal_edge(edge)
-        return True
+        # Guard against semantic duplicates: two calls with the same
+        # (source, target, relationship_type) triple represent the same causal
+        # link regardless of when they are recorded.  The content-derived
+        # edge_id includes recorded_at, so _add_internal_edge cannot detect
+        # this.  The duplicate check and the insertion are held under the same
+        # lock acquisition so no concurrent call can slip through between them.
+        # self._lock is an RLock, so the nested acquisition inside
+        # _add_internal_edge by the same thread is safe.
+        with self._lock:
+            existing = self._adjacency.get(source_decision_id, [])
+            if any(
+                e.target_id == target_decision_id and e.edge_type == relationship_type
+                for e in existing
+            ):
+                return False
+            return self._add_internal_edge(edge)
 
     def get_causal_chain(
         self,
