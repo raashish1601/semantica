@@ -1,5 +1,6 @@
 """Shared pytest configuration for the whole test suite."""
 
+import copy
 import importlib
 import sys
 
@@ -20,10 +21,7 @@ def _isolate_semantic_extract_config():
     makes every later provider test see a key that is not set.
     """
     configs = _config_module.config._configs
-    saved = {
-        key: dict(value) if isinstance(value, dict) else value
-        for key, value in configs.items()
-    }
+    saved = copy.deepcopy(configs)
     yield
     configs.clear()
     configs.update(saved)
