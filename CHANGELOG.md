@@ -12,12 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `DecisionRecorder` and `AgentContext` gain opt-in `evaluators`/`eval_config` constructor parameters that run `semantica.evals` evaluators (e.g. `decision_scores`) automatically during `record_decision()`, storing `eval_score`/`eval_passed`/`eval_details` in `Decision.metadata`. Fully backward-compatible: omitting `evaluators` leaves recording behavior unchanged. Evaluator failures are logged and never block decision persistence. Wired for the `graph_store` backend only; the `context_graph` `AgentContext` backend is a known follow-up.
+- **Trust-tier grading of retrieved context** (#1703, phase 2 of #1557) by @pkupt
+  - `ContextRetriever` now grades every retrieved fact on evidence quality and records the tier in `RetrievedContext.metadata["trust_tier"]` (`quarantine` / `bronze` / `silver` / `gold`). Tiers are computed at query time from signals already present in the result — graph node confidence and, when a `provenance_manager` is configured, the number of distinct sources from `get_all_sources` — and are never persisted, so grades stay current as source sets change
+  - New `filter_by_tier(minimum, include_unscored=False)` on `ContextRetriever`, alongside the existing score/type/date filters. Graph facts without readable signals grade to `quarantine` (missing evidence is never trusted as high confidence); DRIFT's verified local facts are graded the same way as graph edges. Community-report summaries from global and DRIFT search carry no per-fact signals and stay unscored, and a threshold keeps them rather than emptying the response. Without a `provenance_manager` there is no corroboration signal, so facts grade `bronze` at best and a `silver` or `gold` threshold needs one
+  - `retrieve` accepts `min_trust_tier` in all four modes (local, global, drift, hybrid). The local leg drops unscored items, while the global, DRIFT and hybrid legs keep unscored summaries and still drop facts graded below the threshold
 
 - **`RelationalSchemaMapper`** (#1386, part 1) by @costajohnt
   - `semantica.kg.RelationalSchemaMapper` maps rows from a relational source (`DBIngestor`, `SnowflakeIngestor`, `DatabricksIngestor`, `PandasIngestor`, a DataFrame or plain row dicts) to the `{"entities", "relationships"}` shape `GraphBuilder` and `OntologyGenerator` consume: entity tables become entities keyed by primary key, foreign keys become typed relationships, junction tables become relationships only
   - Every entity and relationship is tagged with the `source` it came from so `ConflictDetector` can key credibility on it. New `tests/kg/test_schema_mapper.py`
 
 ### Fixed
+
+- **`semantica backup create` reported success for an archive with no store data** (fixes #1820) by @costajohnt
+  - With no file-based `graph_db` / `vector_store` / `triplet_store` path in the config, `backup create` wrote a manifest with `"files": []` and exited 0. It now fails with an error that points to `semantica backup info`, before asking for a passphrase or confirmation and before writing anything.
+
+- **`semantica backup create` dropped a configured store whose path was missing** (fixes #2009) by @nilaymallikk
+  - A configured `graph_db` or `vector_store` whose `path` / `data_path` / `index_path` did not exist on disk was left out of the archive with no warning, so a partial backup reported `✓ Backup created` and exited 0 — the remaining case from #1820, which only covered the archive that was empty of *every* store. Each skipped store is now named in a warning before the passphrase and confirmation prompts, including when every configured store is missing and the #1820 error follows, and recorded under `"skipped"` in `backup_manifest.json`. A backend with no local path key (Pinecone, Neo4j, ...) is not a skip and is not reported
+  - The reported path is passed through the same credential redaction as `backup info`, so a connection string with a password never reaches the warning or the manifest, including with `--strip-config`
+  - New `--fail-on-skip` turns that warning into a non-zero exit for scheduled and CI backups, which must never archive a partial store set. It runs before anything is written, so a failing run leaves no archive behind. The default stays exit 0, so a config that names a store path which has not been created yet keeps working unchanged
+  - New cases in `tests/test_cli_commands.py::TestBackup` cover both directions of the skip, every store missing, the manifest entry, `--fail-on-skip`, credential redaction, and the cloud-backend no-false-positive case
 
 - **`calculate_pagerank` rebuilt the adjacency once per node for a plain graph dictionary** (fixes #1842)
   - `_get_filtered_neighbors` called `build_adjacency(graph, directed=True)` for every node, making neighbour resolution O(N * (N + E)). `calculate_pagerank` now builds it once before the node loop and passes it in through a new optional `adjacency` argument; scores are unchanged. New `tests/kg/test_centrality_pagerank_adjacency_reuse.py`
