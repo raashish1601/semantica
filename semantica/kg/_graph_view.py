@@ -254,8 +254,7 @@ def build_edge_type_index(graph: Any) -> Optional[EdgeTypeIndex]:
 def _pair_types(
     index: EdgeTypeIndex, source: Any, target: Any, directed: bool
 ) -> Set[Any]:
-    """Union the indexed types from ``source`` to ``target``, and back unless
-    ``directed``."""
+    """Union a pair's indexed types, reading both ways unless ``directed``."""
     types: Set[Any] = set(index.by_pair.get((source, target), ()))
     if not directed:
         types |= index.by_pair.get((target, source), set())
